@@ -3,6 +3,8 @@ A command line tool that shows the top stories from [Hacker News](https://news.y
 
 This is a port of an dotnet version, [hn-top](https://github.com/amscotti/hn-top) which I used to learn about Go and understand how to keep the order of the stories when using Goroutines with help of Mutex and WaitGroup.
 
+![hacker_news Output](https://github.com/amscotti/hacker_news/blob/main/hacker_news.png?raw=true)
+
 ## Building and Running
 
 ### With Go
