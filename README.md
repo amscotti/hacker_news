@@ -13,6 +13,9 @@ This is a port of an dotnet version, [hn-top](https://github.com/amscotti/hn-top
 * Build with `docker build -t hacker_news . `
 * Then run with `docker run hacker_news`
 
+### With pre-build Docker image from [ghcr.io](https://github.com/amscotti/hacker_news/pkgs/container/hacker_news)
+* To download and run, use `docker run ghcr.io/amscotti/hacker_news:main`
+
 ### Command Line Arguments
 ```
 Usage of ./hacker_news:
