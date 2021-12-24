@@ -5,12 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sync"
 )
 
-const STORIES_URL = "https://hacker-news.firebaseio.com/v0/topstories.json"
-const ITEM_URL_BASE = "https://hacker-news.firebaseio.com/v0/item"
+const (
+	STORIES_URL   = "https://hacker-news.firebaseio.com/v0/topstories.json"
+	ITEM_URL_BASE = "https://hacker-news.firebaseio.com/v0/item"
+)
 
 type Story struct {
 	Title       string
@@ -39,23 +42,24 @@ func downloadStory(id int, wg *sync.WaitGroup, m *sync.Mutex, stories map[int]St
 
 	rsp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer rsp.Body.Close()
 
 	data, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	var story Story
 	if err := json.Unmarshal(data, &story); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	m.Lock()
 	stories[id] = story
 	m.Unlock()
+
 	wg.Done()
 }
 
@@ -64,16 +68,18 @@ func fetch(number int, showSourceUrls bool) {
 
 	rsp, err := http.Get(STORIES_URL)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer rsp.Body.Close()
+
 	data, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+
 	var ids []int
 	if err := json.Unmarshal(data, &ids); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if len(ids) > number {
@@ -85,8 +91,9 @@ func fetch(number int, showSourceUrls bool) {
 	var m sync.Mutex
 	var wg sync.WaitGroup
 
+	wg.Add(len(ids))
+
 	for _, id := range ids {
-		wg.Add(1)
 		go downloadStory(id, &wg, &m, storyDetails)
 	}
 
