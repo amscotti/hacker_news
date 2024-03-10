@@ -12,7 +12,7 @@ func main() {
 	var number int
 	var showSourceUrls bool
 
-	flag.IntVar(&number, "n", 5, "Specify the number of top stories to display (default: 5).")
+	flag.IntVar(&number, "n", 30, "Specify the number of top stories to display.")
 	flag.BoolVar(&showSourceUrls, "u", false, "Include the source URLs of the stories in the output.")
 	flag.Parse()
 

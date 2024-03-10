@@ -16,19 +16,29 @@ const (
 	ITEM_URL_BASE = "https://hacker-news.firebaseio.com/v0/item"
 )
 
-func createClient() *http.Client {
-	transport := &http.Transport{
-		MaxIdleConns:    100,
-		IdleConnTimeout: 30 * time.Second,
-	}
-	return &http.Client{
-		Transport: transport,
-		Timeout:   time.Duration(10 * time.Second),
-	}
+type StoryIdPair struct {
+	PlacementId int
+	StoryId     int
+}
+
+var clientPool = sync.Pool{
+	New: func() interface{} {
+		transport := &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     30 * time.Second,
+		}
+		return &http.Client{
+			Transport: transport,
+			Timeout:   time.Duration(10 * time.Second),
+		}
+	},
 }
 
 func fetchJSON(url string) (*fastjson.Value, error) {
-	client := createClient()
+	client := clientPool.Get().(*http.Client)
+	defer clientPool.Put(client)
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch %s: %w", url, err)
@@ -48,36 +58,36 @@ func fetchJSON(url string) (*fastjson.Value, error) {
 	return value, nil
 }
 
-func downloadStory(id int, wg *sync.WaitGroup, m *sync.Mutex, stories map[int]Story) {
-	defer wg.Done()
+func downloadStory(storyIdChan <-chan StoryIdPair, storyChan chan<- Story) {
+	for storyId := range storyIdChan {
+		url := fmt.Sprintf("%s/%d.json", ITEM_URL_BASE, storyId.StoryId)
 
-	url := fmt.Sprintf("%s/%d.json", ITEM_URL_BASE, id)
+		value, err := fetchJSON(url)
+		if err != nil {
+			log.Printf("Error fetching story with id %d: %v", storyId.StoryId, err)
+			storyChan <- Story{}
+			return
+		}
 
-	value, err := fetchJSON(url)
-	if err != nil {
-		log.Printf("Error fetching story with id %d: %v", id, err)
-		return
+		story := Story{
+			Index:       storyId.PlacementId,
+			Title:       string(value.GetStringBytes("title")),
+			By:          string(value.GetStringBytes("by")),
+			Descendants: int(value.GetInt("descendants")),
+			Id:          int(value.GetInt("id")),
+			Score:       int(value.GetInt("score")),
+			Time:        int(value.GetInt("time")),
+			Type:        string(value.GetStringBytes("type")),
+			URL:         string(value.GetStringBytes("url")),
+		}
+
+		kids := value.GetArray("kids")
+		for i := range kids {
+			story.Kids = append(story.Kids, int(kids[i].GetInt()))
+		}
+
+		storyChan <- story
 	}
-
-	story := Story{
-		Title:       string(value.GetStringBytes("title")),
-		By:          string(value.GetStringBytes("by")),
-		Descendants: int(value.GetInt("descendants")),
-		Id:          int(value.GetInt("id")),
-		Score:       int(value.GetInt("score")),
-		Time:        int(value.GetInt("time")),
-		Type:        string(value.GetStringBytes("type")),
-		URL:         string(value.GetStringBytes("url")),
-	}
-
-	kids := value.GetArray("kids")
-	for i := range kids {
-		story.Kids = append(story.Kids, int(kids[i].GetInt()))
-	}
-
-	m.Lock()
-	stories[id] = story
-	m.Unlock()
 }
 
 func FetchTopStories(number int, showSourceUrls bool) {
@@ -87,32 +97,33 @@ func FetchTopStories(number int, showSourceUrls bool) {
 		return
 	}
 
-	var ids []int
 	valueArray := value.GetArray()
-	for i := 0; i < len(valueArray); i++ {
-		id := int(valueArray[i].GetInt())
-		ids = append(ids, id)
+	count := min(len(valueArray), number)
+
+	stories := make([]Story, count)
+
+	storyIdChan := make(chan StoryIdPair, count)
+	storyChan := make(chan Story, count)
+
+	for range count {
+		go downloadStory(storyIdChan, storyChan)
 	}
 
-	if len(ids) > number {
-		ids = ids[:number]
+	go func() {
+		for index, id := range valueArray[:number] {
+			storyIdChan <- StoryIdPair{PlacementId: index, StoryId: id.GetInt()}
+		}
+		close(storyIdChan)
+	}()
+
+	for range count {
+		story := <-storyChan
+		stories[story.Index] = story
 	}
 
-	storyDetails := make(map[int]Story)
+	close(storyChan)
 
-	var m sync.Mutex
-	var wg sync.WaitGroup
-
-	wg.Add(len(ids))
-
-	for _, id := range ids {
-		go downloadStory(id, &wg, &m, storyDetails)
-	}
-
-	wg.Wait()
-
-	for _, id := range ids {
-		story := storyDetails[id]
+	for _, story := range stories {
 		fmt.Print(story.PrintStyling(showSourceUrls))
 	}
 }

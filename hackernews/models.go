@@ -11,6 +11,7 @@ const (
 )
 
 type Story struct {
+	Index       int
 	Title       string
 	By          string
 	Descendants int
